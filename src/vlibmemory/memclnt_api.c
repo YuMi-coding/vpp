@@ -355,8 +355,16 @@ vl_api_clnt_process (vlib_main_t *vm, vlib_node_runtime_t *node,
       start_time = vlib_time_now (vm);
       while (1)
 	{
-	  if (vl_mem_api_handle_rpc (vm, node) ||
-	      vl_mem_api_handle_msg_main (vm, node))
+    /* Splitted the RPC processing from message main processing*/
+	  if (vl_mem_api_handle_rpc (vm, node))
+	    {
+	      vm->api_queue_nonempty = 0;
+	      VL_MEM_API_LOG_Q_LEN ("q-underflow: len %d", 0);
+	      sleep_time = 20.0;
+	      break;
+	    }
+
+	  if (vl_mem_api_handle_msg_main (vm, node))
 	    {
 	      vm->api_queue_nonempty = 0;
 	      VL_MEM_API_LOG_Q_LEN ("q-underflow: len %d", 0);

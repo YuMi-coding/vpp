@@ -914,13 +914,73 @@ void_mem_api_handle_msg_i (api_main_t * am, svm_region_t * vlib_rp,
   return -1;
 }
 
+static inline int
+void_mem_api_handle_msg_i_x4 (api_main_t * am, svm_region_t * vlib_rp,
+			   vlib_main_t * vm, vlib_node_runtime_t * node,
+			   u8 is_private)
+{
+  svm_queue_t *q;
+  uword mp[VLIB_FRAME_SIZE];
+  u32 n_mp = 0; // total messages
+
+  q = ((vl_shmem_hdr_t *) (void *) vlib_rp->user_ctx)->vl_input_queue;
+
+  while(svm_queue_sub2(q,(u8 *) & mp[n_mp]))
+  {
+    n_mp ++;
+  }
+
+  if(PREDICT_FALSE(n_mp <= 0))
+    return -1;
+
+  for(u32 i = 0; i< n_mp; i++)
+  {
+    VL_MSG_API_UNPOISON((void*) mp[i]);
+  }
+
+  u32 p_mp = 0; // Processed messages
+
+  while(p_mp - n_mp >= 4)
+  {
+      vl_mem_api_handler_with_vm_node (am, vlib_rp, (void *) mp[p_mp], vm, node,
+				       is_private);
+      vl_mem_api_handler_with_vm_node (am, vlib_rp, (void *) mp[p_mp+1], vm, node,
+				       is_private);
+      vl_mem_api_handler_with_vm_node (am, vlib_rp, (void *) mp[p_mp+2], vm, node,
+				       is_private);
+      vl_mem_api_handler_with_vm_node (am, vlib_rp, (void *) mp[p_mp+3], vm, node,
+				       is_private);
+
+      p_mp += 4;
+  }
+
+  while(p_mp < n_mp)
+  {
+      vl_mem_api_handler_with_vm_node (am, vlib_rp, (void *) mp[p_mp], vm, node,
+				       is_private);
+      p_mp ++;
+  }
+
+  return -1;
+}
+
 int
 vl_mem_api_handle_msg_main (vlib_main_t * vm, vlib_node_runtime_t * node)
 {
   api_main_t *am = vlibapi_get_main ();
-  return void_mem_api_handle_msg_i (am, am->vlib_rp, vm, node,
+  /* Moved to use x4 invoking */
+  return void_mem_api_handle_msg_i_x4 (am, am->vlib_rp, vm, node,
 				    0 /* is_private */ );
 }
+
+int
+vl_mem_api_handle_msg_main_x4 (vlib_main_t * vm, vlib_node_runtime_t * node)
+{
+  api_main_t *am = vlibapi_get_main ();
+  return void_mem_api_handle_msg_i_x4 (am, am->vlib_rp, vm, node,
+				    0 /* is_private */ );
+}
+
 
 int
 vl_mem_api_handle_rpc (vlib_main_t * vm, vlib_node_runtime_t * node)
